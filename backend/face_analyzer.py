@@ -133,27 +133,42 @@ class FaceAttractivenessAnalyzer:
     def _calculate_symmetry_score(self, points: List[Tuple], w: int, h: int) -> float:
         """Calculate facial symmetry score"""
         try:
-            # Get key symmetric points
-            left_eye_center = self._get_center_point([points[i] for i in self.LEFT_EYE])
-            right_eye_center = self._get_center_point([points[i] for i in self.RIGHT_EYE])
+            # Get key symmetric points with error checking
+            left_eye_points = [points[i] for i in self.LEFT_EYE if i < len(points)]
+            right_eye_points = [points[i] for i in self.RIGHT_EYE if i < len(points)]
+            
+            if not left_eye_points or not right_eye_points:
+                return 60.0  # Default if eye points missing
+            
+            left_eye_center = self._get_center_point(left_eye_points)
+            right_eye_center = self._get_center_point(right_eye_points)
             
             # Calculate face center line
             face_center_x = w / 2
             
-            # Calculate deviations from symmetry
-            left_deviation = abs(left_eye_center[0] - (face_center_x - abs(right_eye_center[0] - face_center_x)))
-            right_deviation = abs(right_eye_center[0] - (face_center_x + abs(left_eye_center[0] - face_center_x)))
+            # Simple symmetry calculation: how close are eyes to being equidistant from center
+            left_distance = abs(left_eye_center[0] - face_center_x)
+            right_distance = abs(right_eye_center[0] - face_center_x)
             
-            avg_deviation = (left_deviation + right_deviation) / 2
+            # Calculate symmetry as similarity of distances
+            if left_distance + right_distance == 0:
+                return 100.0  # Perfect center alignment
             
-            # Convert to score (lower deviation = higher score)
-            max_deviation = w * 0.1  # 10% of face width
-            symmetry_ratio = 1 - (avg_deviation / max_deviation)
+            symmetry_ratio = 1 - abs(left_distance - right_distance) / (left_distance + right_distance)
             
-            return max(0, min(100, symmetry_ratio * 100))
+            # Also check vertical alignment of eyes
+            eye_height_diff = abs(left_eye_center[1] - right_eye_center[1])
+            max_height_diff = h * 0.05  # 5% of image height
+            height_symmetry = max(0, 1 - (eye_height_diff / max_height_diff))
             
-        except Exception:
-            return 50.0
+            # Combine horizontal and vertical symmetry
+            final_symmetry = (symmetry_ratio * 0.7 + height_symmetry * 0.3)
+            
+            return max(20, min(100, final_symmetry * 100))  # Minimum 20, never 0
+            
+        except Exception as e:
+            print(f"Symmetry calculation error: {e}")
+            return 60.0  # Reasonable default
 
     def _calculate_golden_ratio_score(self, points: List[Tuple], w: int, h: int) -> float:
         """Calculate how well face proportions match golden ratio"""
