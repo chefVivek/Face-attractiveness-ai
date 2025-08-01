@@ -173,44 +173,74 @@ class FaceAttractivenessAnalyzer:
     def _calculate_golden_ratio_score(self, points: List[Tuple], w: int, h: int) -> float:
         """Calculate how well face proportions match golden ratio"""
         try:
+            # Get face boundary points with error checking
+            face_oval_points = [points[i] for i in self.FACE_OVAL if i < len(points)]
+            
+            if len(face_oval_points) < 10:  # Need enough points for calculation
+                return 65.0  # Default score
+            
             # Get key facial measurements
-            face_top = min([points[i][1] for i in self.FACE_OVAL])
-            face_bottom = max([points[i][1] for i in self.FACE_OVAL])
-            face_left = min([points[i][0] for i in self.FACE_OVAL])
-            face_right = max([points[i][0] for i in self.FACE_OVAL])
+            face_y_coords = [p[1] for p in face_oval_points]
+            face_x_coords = [p[0] for p in face_oval_points]
+            
+            face_top = min(face_y_coords)
+            face_bottom = max(face_y_coords)
+            face_left = min(face_x_coords)
+            face_right = max(face_x_coords)
             
             face_width = face_right - face_left
             face_height = face_bottom - face_top
             
-            # Calculate eye-to-mouth distance
-            eye_center_y = (self._get_center_point([points[i] for i in self.LEFT_EYE])[1] + 
-                           self._get_center_point([points[i] for i in self.RIGHT_EYE])[1]) / 2
-            mouth_center_y = self._get_center_point([points[i] for i in self.MOUTH])[1]
+            if face_width <= 0 or face_height <= 0:
+                return 65.0  # Avoid division by zero
+            
+            # Calculate eye and mouth positions
+            left_eye_points = [points[i] for i in self.LEFT_EYE if i < len(points)]
+            right_eye_points = [points[i] for i in self.RIGHT_EYE if i < len(points)]
+            mouth_points = [points[i] for i in self.MOUTH if i < len(points)]
+            
+            if not all([left_eye_points, right_eye_points, mouth_points]):
+                return 65.0  # Missing critical features
+            
+            eye_center_y = (self._get_center_point(left_eye_points)[1] + 
+                           self._get_center_point(right_eye_points)[1]) / 2
+            mouth_center_y = self._get_center_point(mouth_points)[1]
             
             eye_mouth_distance = abs(mouth_center_y - eye_center_y)
             
             # Check various golden ratio relationships
             ratios = []
             
-            # Face width to height ratio (should be around 1/golden_ratio)
-            if face_height > 0:
-                width_height_ratio = face_width / face_height
-                ideal_ratio = 1 / self.GOLDEN_RATIO
-                ratios.append(1 - abs(width_height_ratio - ideal_ratio) / ideal_ratio)
+            # Face width to height ratio (ideal around 0.618)
+            width_height_ratio = face_width / face_height
+            ideal_ratio = 1 / self.GOLDEN_RATIO  # ~0.618
+            ratio_score = max(0, 1 - abs(width_height_ratio - ideal_ratio) / ideal_ratio)
+            ratios.append(ratio_score)
             
-            # Eye to mouth distance vs face height
-            if face_height > 0 and eye_mouth_distance > 0:
+            # Eye to mouth distance vs face height (ideal around 0.36)
+            if eye_mouth_distance > 0:
                 eye_mouth_ratio = eye_mouth_distance / face_height
-                ideal_eye_mouth = 0.36  # Approximately 1/golden_ratio squared
-                ratios.append(1 - abs(eye_mouth_ratio - ideal_eye_mouth) / ideal_eye_mouth)
+                ideal_eye_mouth = 0.36
+                eye_mouth_score = max(0, 1 - abs(eye_mouth_ratio - ideal_eye_mouth) / ideal_eye_mouth)
+                ratios.append(eye_mouth_score)
+            
+            # Eye width vs face width (ideal around 0.3)
+            eye_distance = abs(self._get_center_point(left_eye_points)[0] - 
+                             self._get_center_point(right_eye_points)[0])
+            if eye_distance > 0:
+                eye_face_ratio = eye_distance / face_width
+                ideal_eye_ratio = 0.3
+                eye_ratio_score = max(0, 1 - abs(eye_face_ratio - ideal_eye_ratio) / ideal_eye_ratio)
+                ratios.append(eye_ratio_score)
             
             # Average the ratios
-            avg_ratio = sum(ratios) / len(ratios) if ratios else 0.5
+            avg_ratio = sum(ratios) / len(ratios) if ratios else 0.6
             
-            return max(0, min(100, avg_ratio * 100))
+            return max(30, min(100, avg_ratio * 100))  # Minimum 30, never 0
             
-        except Exception:
-            return 50.0
+        except Exception as e:
+            print(f"Golden ratio calculation error: {e}")
+            return 65.0  # Reasonable default
 
     def _calculate_feature_scores(self, points: List[Tuple], w: int, h: int) -> Dict[str, float]:
         """Calculate individual feature scores"""
