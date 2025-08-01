@@ -19,7 +19,7 @@ class FaceAttractivenessAnalyzer:
             static_image_mode=True,
             max_num_faces=1,
             refine_landmarks=True,
-            min_detection_confidence=0.8
+            min_detection_confidence=0.3  # Much more lenient
         )
         
         # Load a simple pretrained model for feature extraction
