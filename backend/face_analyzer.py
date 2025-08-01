@@ -60,19 +60,33 @@ class FaceAttractivenessAnalyzer:
             # Convert to RGB if needed
             if image_pil.mode != 'RGB':
                 image_pil = image_pil.convert('RGB')
+            
+            # Ensure image is not too small
+            if image_pil.size[0] < 100 or image_pil.size[1] < 100:
+                # Resize small images
+                image_pil = image_pil.resize((400, 400))
                 
             # Convert to cv2 format
             image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
             image_rgb = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
             
-            # Get face landmarks
+            # Try face detection with multiple attempts
             results = self.face_mesh.process(image_rgb)
             
+            # If first attempt fails, try with different processing
             if not results.multi_face_landmarks:
-                return {"error": "No face detected in the image"}
+                # Try with enhanced contrast
+                enhanced = cv2.equalizeHist(cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY))
+                enhanced_rgb = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2RGB)
+                results = self.face_mesh.process(enhanced_rgb)
+            
+            if not results.multi_face_landmarks:
+                return {"error": "No face detected in the image. Please upload a clear, front-facing portrait photo."}
             
             landmarks = results.multi_face_landmarks[0]
             h, w = image_rgb.shape[:2]
+            
+            print(f"Image dimensions: {w}x{h}, Total landmarks: {len(landmarks.landmark)}")
             
             # Convert landmarks to pixel coordinates
             points = []
@@ -81,11 +95,15 @@ class FaceAttractivenessAnalyzer:
                 y = int(landmark.y * h)
                 points.append((x, y))
             
+            print(f"Converted {len(points)} landmark points")
+            
             # Calculate scores
             overall_score = self._calculate_overall_attractiveness(image_pil, points, w, h)
             symmetry_score = self._calculate_symmetry_score(points, w, h)
             golden_ratio_score = self._calculate_golden_ratio_score(points, w, h)
             feature_scores = self._calculate_feature_scores(points, w, h)
+            
+            print(f"Scores calculated - Overall: {overall_score}, Symmetry: {symmetry_score}, Golden: {golden_ratio_score}")
             
             return {
                 "overall_score": round(overall_score, 1),
@@ -96,7 +114,8 @@ class FaceAttractivenessAnalyzer:
             }
             
         except Exception as e:
-            return {"error": f"Analysis failed: {str(e)}"}
+            print(f"Analysis failed with error: {str(e)}")
+            return {"error": f"Analysis failed: {str(e)}. Please try a different image."}
 
     def _calculate_overall_attractiveness(self, image_pil: Image.Image, points: List[Tuple], w: int, h: int) -> float:
         """Calculate overall attractiveness using multiple factors"""
